@@ -92,6 +92,7 @@ namespace Robotics.Mobile.Core.Bluetooth.LE
 		{
 			if (this._gatt != null) {
 				this._gatt.Disconnect ();
+                Thread.Sleep(100);
 				// From empirical results, simply gatt.disconnect follow by gatt.connect is not sufficient
 				// to reconnect to deviece (on Nexus 7 2013 with Adnroid 5.1.1)
 				// Calling gatt.Close() has more chance on the next connection attempt being successful. 
