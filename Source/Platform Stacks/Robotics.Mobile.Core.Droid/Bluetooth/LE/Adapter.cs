@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using Android.Bluetooth;
+using System.Linq;
 using System.Threading.Tasks;
 
 namespace Robotics.Mobile.Core.Bluetooth.LE
@@ -19,6 +20,8 @@ namespace Robotics.Mobile.Core.Bluetooth.LE
 		// class members
 		protected BluetoothManager _manager;
 		protected BluetoothAdapter _adapter;
+
+        private Guid _scanFilterServiceUuid = Guid.Empty;
 
 		public bool IsScanning {
 			get { return this._isScanning; }
@@ -46,34 +49,41 @@ namespace Robotics.Mobile.Core.Bluetooth.LE
 		}
 
 		//TODO: scan for specific service type eg. HeartRateMonitor
-		public async void StartScanningForDevices (Guid serviceUuid)
+		public void StartScanningForDevices (Guid serviceUuid)
 		{
-			StartScanningForDevices ();
+            _scanFilterServiceUuid = serviceUuid;
+			StartScanningForDevicesImpl ();
 //			throw new NotImplementedException ("Not implemented on Android yet, look at _adapter.StartLeScan() overload");
 		}
-		public async void StartScanningForDevices ()
+		public void StartScanningForDevices ()
 		{
-			Console.WriteLine ("Adapter: Starting a scan for devices.");
-
-			// clear out the list
-			this._discoveredDevices = new List<IDevice> ();
-
-			// start scanning
-			this._isScanning = true;
-			this._adapter.StartLeScan (this);
-
-			// in 10 seconds, stop the scan
-			await Task.Delay (10000);
-
-			// if we're still scanning
-			if (this._isScanning) {
-				Console.WriteLine ("BluetoothLEManager: Scan timeout has elapsed.");
-				this._adapter.StopLeScan (this);
-				this.ScanTimeoutElapsed (this, new EventArgs ());
-			}
+            _scanFilterServiceUuid = Guid.Empty;
+            StartScanningForDevicesImpl ();
 		}
 
-		public void StopScanningForDevices ()
+        private async void StartScanningForDevicesImpl ()
+        {
+            Console.WriteLine ("Adapter: Starting a scan for devices.");
+
+            // clear out the list
+            this._discoveredDevices = new List<IDevice> ();
+
+            // start scanning
+            this._isScanning = true;
+            this._adapter.StartLeScan (this);
+
+            // in 10 seconds, stop the scan
+            await Task.Delay (10000);
+
+            // if we're still scanning
+            if (this._isScanning) {
+                Console.WriteLine ("BluetoothLEManager: Scan timeout has elapsed.");
+                this._adapter.StopLeScan (this);
+                this.ScanTimeoutElapsed (this, new EventArgs ());
+            }
+        }
+
+        public void StopScanningForDevices ()
 		{
 			Console.WriteLine ("Adapter: Stopping the scan for devices.");
 			this._isScanning = false;	
@@ -83,6 +93,10 @@ namespace Robotics.Mobile.Core.Bluetooth.LE
 		public void OnLeScan (BluetoothDevice bleDevice, int rssi, byte[] scanRecord)
 		{
 			Console.WriteLine ("Adapter.LeScanCallback: " + bleDevice.Name);
+
+            if (_scanFilterServiceUuid != Guid.Empty && !ParseBleScanRecordServiceGuids(scanRecord).Contains(_scanFilterServiceUuid))
+                return;
+
 			// TODO: for some reason, this doesn't work, even though they have the same pointer,
 			// it thinks that the item doesn't exist. so i had to write my own implementation
 //			if(!this._discoveredDevices.Contains(device) ) {
@@ -142,6 +156,49 @@ namespace Robotics.Mobile.Core.Bluetooth.LE
 			((Device) device).Disconnect();
 		}
 
+        private static IEnumerable<Guid> ParseBleScanRecordServiceGuids(byte[] advertisedData) {
+            List<Guid> uuids = new List<Guid>();
+
+            int offset = 0;
+            while (offset < (advertisedData.Length - 2)) {
+                int len = advertisedData[offset++];
+                if (len == 0)
+                    break;
+
+                int type = advertisedData[offset++];
+                switch (type) {
+                    case 0x02: // Partial list of 16-bit UUIDs
+                    case 0x03: // Complete list of 16-bit UUIDs
+                        while (len > 1) {
+                            int uuid16 = advertisedData[offset++];
+                            uuid16 += (advertisedData[offset++] << 8);
+                            len -= 2;
+                            uuids.Add(new Guid(String.Format("{0:x8}-0000-1000-8000-00805f9b34fb", uuid16)));
+                        }
+                        break;
+                    case 0x06:// Partial list of 128-bit UUIDs
+                    case 0x07:// Complete list of 128-bit UUIDs
+                        // Loop through the advertised 128-bit UUID's.
+                        while (len >= 16) {
+                            try {
+                                // Wrap the advertised bits and order them.
+                                var buffer = string.Join("", advertisedData.Skip(offset++).Take(16).Reverse().Select(x => x.ToString("x2")));
+                                uuids.Add(new Guid(buffer));
+                            } finally {
+                                // Move the offset to read the next uuid.
+                                offset += 15;
+                                len -= 16;
+                            }
+                        }
+                        break;
+                    default:
+                        offset += (len - 1);
+                        break;
+                }
+            }
+
+            return uuids;
+        }
 	}
 }
 
