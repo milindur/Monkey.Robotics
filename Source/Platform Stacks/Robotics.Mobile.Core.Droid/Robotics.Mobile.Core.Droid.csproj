@@ -14,6 +14,8 @@
     <AndroidUseLatestPlatformSdk>False</AndroidUseLatestPlatformSdk>
     <AssemblyName>Robotics.Mobile.Core.Droid</AssemblyName>
     <TargetFrameworkVersion>v4.3</TargetFrameworkVersion>
+    <ReleaseVersion>0.5.2</ReleaseVersion>
+    <SynchReleaseVersion>false</SynchReleaseVersion>
   </PropertyGroup>
   <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' ">
     <DebugSymbols>true</DebugSymbols>
